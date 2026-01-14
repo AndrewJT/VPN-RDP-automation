@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>NetConnect Pro - Management Console</title>
+    <link rel="icon" href="data:image/x-icon;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQEAYAAABPYyMiAAAABmJLR0T///////8JWPfcAAAACXBIWXMAAABIAAAASABGyWs+AAAAF0lEQVRIx2NgGAWjYBSMglEwCkbBSAcACBAAAeg64mYAAAAASUVORK5CYII=">
+    
+    <script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.24.0/babel.min.js" crossorigin></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        darkMode: 'class',
+        theme: {
+          extend: {
+            colors: {
+              indigo: {
+                50: '#f5f3ff',
+                100: '#ede9fe',
+                600: '#4f46e5',
+                700: '#4338ca',
+                800: '#3730a3',
+              }
+            }
+          }
+        }
+      }
+    </script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    
+    <style>
+      :root {
+        --bg-main: #f8fafc;
+        --bg-side: #ffffff;
+        --bg-card: #ffffff;
+        --text-main: #020617;
+        --text-muted: #475569;
+        --border-color: #cbd5e1;
+        --accent-primary: #4f46e5;
+        --input-bg: #ffffff;
+      }
+
+      .dark {
+        --bg-main: #020617;
+        --bg-side: #0f172a;
+        --bg-card: #1e293b;
+        --text-main: #f8fafc;
+        --text-muted: #94a3b8;
+        --border-color: #334155;
+        --accent-primary: #6366f1;
+        --input-bg: #0f172a;
+      }
+
+      body {
+        font-family: 'Inter', sans-serif;
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+        background-color: var(--bg-main);
+        color: var(--text-main);
+        transition: background-color 0.2s ease, color 0.2s ease;
+      }
+
+      .card-bg { background-color: var(--bg-card); border: 2px solid var(--border-color); color: var(--text-main); }
+      .sidebar-bg { background-color: var(--bg-side); border-right: 2px solid var(--border-color); }
+      .text-contrast { color: var(--text-main) !important; }
+      .text-sub { color: var(--text-muted); }
+
+      #root { height: 100vh; width: 100vw; }
+      
+      .loading-screen {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 100vh;
+        background: #020617;
+        color: white;
+      }
+      .spinner {
+        width: 40px;
+        height: 40px;
+        border: 4px solid rgba(255,255,255,0.1);
+        border-left-color: #6366f1;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+      }
+      @keyframes spin { to { transform: rotate(360deg); } }
+
+      .custom-input {
+        background-color: var(--input-bg);
+        border: 2px solid var(--border-color);
+        color: var(--text-main);
+        font-weight: 700;
+      }
+      .custom-input::placeholder { color: var(--text-muted); opacity: 0.6; font-weight: 500; }
+
+      ::-webkit-scrollbar { width: 8px; }
+      ::-webkit-scrollbar-track { background: transparent; }
+      ::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 10px; }
+    </style>
+
+    <script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@18.2.0",
+    "react-dom": "https://esm.sh/react-dom@18.2.0",
+    "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+    "lucide-react": "https://esm.sh/lucide-react@0.263.1?external=react,react-dom",
+    "@google/genai": "https://esm.sh/@google/genai@^1.35.0",
+    "react/": "https://esm.sh/react@^19.2.3/"
+  }
+}
+</script>
+  <link rel="stylesheet" href="/index.css">
+</head>
+  <body>
+    <div id="root">
+      <div class="loading-screen"><div class="spinner"></div></div>
+    </div>
+
+    <script type="text/babel" data-type="module" data-presets="typescript,react">
+      import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+      import { createRoot } from 'react-dom/client';
+      import { 
+        Monitor, Shield, LayoutDashboard, Settings as SettingsIcon, Key, 
+        X, Sun, Moon, Cpu, Plus, Trash2, ShieldCheck, Fingerprint, Edit3,
+        Lock, ExternalLink, Loader2, CheckCircle2, Terminal, ChevronLeft, Folder,
+        Zap, Activity, Clock, MoreVertical, Database, Info, ChevronRight, Save, User, KeyRound, RefreshCw, ChevronDown, Download, Upload
+      } from 'lucide-react';
+
+      const ConnectionCard = ({ connection, onDelete, onUpdate, onEdit, identities = [] }) => {
+        const [status, setStatus] = useState('idle');
+        const [showMenu, setShowMenu] = useState(false);
+
+        const handleConnect = () => {
+          setStatus('connecting');
+          const win = window;
+          if (win.pywebview && win.pywebview.api) {
+            let user = connection.username;
+            let pass = connection.password;
+            
+            if (connection.identityId) {
+              const iden = identities.find(i => i.id === connection.identityId);
+              if (iden) {
+                user = iden.username;
+                pass = iden.password;
+              }
+            }
+
+            if (connection.type === 'RDP') {
+              win.pywebview.api.launch_rdp(connection.host, user || 'Admin', pass || '');
+            } else {
+              win.pywebview.api.toggle_vpn(connection.protocol, connection.host, false, !!connection.sso);
+            }
+          }
+          setTimeout(() => {
+            setStatus('connected');
+            onUpdate(connection.id, { lastConnected: Date.now() });
+            setTimeout(() => setStatus('idle'), 3000);
+          }, 1500);
+        };
+
+        return (
+          <div className="card-bg p-6 rounded-[2.5rem] shadow-sm hover:shadow-xl transition-all relative group overflow-hidden">
+            <div className="flex justify-between mb-4">
+              <div className={`p-3 rounded-2xl ${connection.type === 'RDP' ? 'bg-indigo-600' : 'bg-emerald-600'} text-white shadow-lg`}>
+                {connection.type === 'RDP' ? <Monitor size={20} /> : <Shield size={20} />}
+              </div>
+              <div className="relative">
+                <button onClick={() => setShowMenu(!showMenu)} className="p-2 text-slate-400 hover:text-indigo-600 transition-colors"><MoreVertical size={18} /></button>
+                {showMenu && (
+                  <>
+                    <div className="fixed inset-0 z-10" onClick={() => setShowMenu(false)}></div>
+                    <div className="absolute right-0 mt-2 w-48 card-bg rounded-2xl shadow-2xl z-20 py-2 border border-slate-200 dark:border-slate-800 animate-in fade-in slide-in-from-top-2">
+                      <button onClick={() => { onEdit(); setShowMenu(false); }} className="w-full text-left px-4 py-3 text-xs font-bold flex items-center gap-3 hover:bg-slate-100 dark:hover:bg-slate-800"><Edit3 size={14} /> Edit Profile</button>
+                      <button onClick={() => { onDelete(); setShowMenu(false); }} className="w-full text-left px-4 py-3 text-xs font-bold flex items-center gap-3 hover:bg-red-50 text-red-500"><Trash2 size={14} /> Delete Profile</button>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+            
+            <h4 className="font-extrabold text-lg mb-1 truncate text-contrast">{connection.name}</h4>
+            <div className="flex flex-wrap items-center gap-2 mb-4">
+              <p className="text-[10px] font-mono font-black uppercase text-sub bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded">{connection.host}</p>
+              {connection.identityId && <span className="text-[9px] font-black bg-indigo-50 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-400 px-2 py-0.5 rounded uppercase flex items-center gap-1"><Lock size={8} /> Identity Linked</span>}
+            </div>
+
+            <button onClick={handleConnect} disabled={status === 'connecting'} className={`w-full py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all ${status === 'connected' ? 'bg-emerald-500 text-white' : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-lg shadow-indigo-600/20'}`}>
+              {status === 'connecting' ? <Loader2 size={16} className="animate-spin mx-auto" /> : status === 'connected' ? 'Active' : `Launch ${connection.type}`}
+            </button>
+          </div>
+        );
+      };
+
+      const ConnectionList = ({ type, connections, onAdd, onDelete, onUpdate, identities = [] }) => {
+        const [editingId, setEditingId] = useState(null);
+        const [showModal, setShowModal] = useState(false);
+        const [collapsedGroups, setCollapsedGroups] = useState({});
+        const [formData, setFormData] = useState({ name: '', host: '', port: type === 'RDP' ? '3389' : '443', protocol: 'FortiClient', username: '', password: '', sso: false, group: '', identityId: '' });
+
+        const openNew = () => {
+          setEditingId(null);
+          setFormData({ name: '', host: '', port: type === 'RDP' ? '3389' : '443', protocol: 'FortiClient', username: '', password: '', sso: false, group: '', identityId: '' });
+          setShowModal(true);
+        };
+
+        const openEdit = (c) => {
+          setEditingId(c.id);
+          setFormData({ ...c });
+          setShowModal(true);
+        };
+
+        const handleSave = () => {
+          if (!formData.name || !formData.host) return;
+          if (editingId) {
+            onUpdate(editingId, { ...formData });
+          } else {
+            onAdd({ ...formData, id: Date.now().toString(), type, lastConnected: 0 });
+          }
+          setShowModal(false);
+        };
+
+        const groups = useMemo(() => {
+          const g = {};
+          connections.forEach(c => {
+            const groupName = c.group || 'Ungrouped';
+            if (!g[groupName]) g[groupName] = [];
+            g[groupName].push(c);
+          });
+          return g;
+        }, [connections]);
+
+        return (
+          <div className="space-y-12 animate-in fade-in duration-500">
+            <div className="flex justify-between items-end">
+              <div>
+                <h2 className="text-5xl font-black uppercase tracking-tighter text-contrast">{type} Library</h2>
+                <p className="text-sm font-bold text-sub uppercase tracking-widest mt-2">Enterprise Endpoint Vault</p>
+              </div>
+              <button onClick={openNew} className="px-10 py-5 bg-indigo-600 text-white rounded-3xl font-black text-xs uppercase tracking-widest shadow-2xl shadow-indigo-600/30 hover:scale-105 transition-transform">+ New Profile</button>
+            </div>
+
+            {Object.keys(groups).length === 0 ? (
+              <div className="py-24 text-center card-bg rounded-[3.5rem] border-4 border-dashed border-slate-300 dark:border-slate-800"><h3 className="text-2xl font-black opacity-30 uppercase tracking-[0.3em] text-contrast">Vault is Empty</h3></div>
+            ) : (
+              <div className="space-y-16">
+                {Object.entries(groups).map(([groupName, groupConns]) => (
+                  <div key={groupName} className="space-y-8">
+                    <button onClick={() => setCollapsedGroups(p => ({...p, [groupName]: !p[groupName]}))} className="flex items-center gap-6 group/header hover:opacity-80 transition-opacity">
+                      <div className="p-4 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-400 rounded-2xl border-2 border-indigo-100 dark:border-indigo-800">
+                        <Folder size={24} />
+                      </div>
+                      <h3 className="text-2xl font-black uppercase tracking-tight text-contrast flex items-center gap-4">
+                        {groupName} 
+                        <span className="text-xs bg-slate-200 dark:bg-slate-800 px-3 py-1 rounded-full text-sub font-black">{groupConns.length} nodes</span>
+                        {collapsedGroups[groupName] ? <ChevronRight size={20} /> : <ChevronDown size={20} />}
+                      </h3>
+                    </button>
+                    {!collapsedGroups[groupName] && (
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 animate-in slide-in-from-top-4 duration-300">
+                        {groupConns.map(c => (
+                          <ConnectionCard key={c.id} connection={c} onUpdate={onUpdate} onDelete={() => onDelete(c.id)} onEdit={() => openEdit(c)} identities={identities} />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {showModal && (
+              <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4 backdrop-blur-md">
+                <div className="card-bg p-12 rounded-[3rem] w-full max-w-2xl shadow-2xl border-4">
+                  <div className="flex justify-between items-center mb-10">
+                    <h3 className="text-4xl font-black uppercase tracking-tighter text-contrast">{editingId ? 'Edit' : 'Create'} {type} Profile</h3>
+                    <button onClick={() => setShowModal(false)} className="p-3 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors"><X size={32} /></button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-8">
+                    <div className="col-span-2">
+                      <label className="text-[10px] font-black uppercase text-sub mb-2 block tracking-widest">Global Identity (Optional)</label>
+                      <select className="w-full p-6 rounded-2xl custom-input font-bold" value={formData.identityId} onChange={e => setFormData({...formData, identityId: e.target.value})}>
+                        <option value="">-- Manual Credentials Below --</option>
+                        {identities.map(i => <option key={i.id} value={i.id}>{i.name} ({i.username})</option>)}
+                      </select>
+                    </div>
+                    <div className="col-span-1">
+                      <label className="text-[10px] font-black uppercase text-sub mb-2 block tracking-widest">Display Label</label>
+                      <input className="w-full p-6 rounded-2xl custom-input outline-none focus:ring-4" value={formData.name} placeholder="Server 01" onChange={e => setFormData({...formData, name: e.target.value})} />
+                    </div>
+                    <div className="col-span-1">
+                      <label className="text-[10px] font-black uppercase text-sub mb-2 block tracking-widest">Folder / Group</label>
+                      <input className="w-full p-6 rounded-2xl custom-input outline-none focus:ring-4" value={formData.group} placeholder="Office" onChange={e => setFormData({...formData, group: e.target.value})} />
+                    </div>
+                    <div className="col-span-1">
+                      <label className="text-[10px] font-black uppercase text-sub mb-2 block tracking-widest">Host / IP</label>
+                      <input className="w-full p-6 rounded-2xl custom-input font-mono outline-none focus:ring-4" value={formData.host} placeholder="10.0.0.1" onChange={e => setFormData({...formData, host: e.target.value})} />
+                    </div>
+                    <div className="col-span-1">
+                      <label className="text-[10px] font-black uppercase text-sub mb-2 block tracking-widest">{type === 'VPN' ? 'Protocol' : 'Port'}</label>
+                      {type === 'VPN' ? (
+                        <select className="w-full p-6 rounded-2xl custom-input font-bold outline-none focus:ring-4" value={formData.protocol} onChange={e => setFormData({...formData, protocol: e.target.value})}>
+                          <option value="FortiClient">FortiClient</option>
+                          <option value="OpenVPN">OpenVPN</option>
+                          <option value="GlobalProtect">Palo Alto GlobalProtect</option>
+                          <option value="AnyConnect">Cisco AnyConnect</option>
+                          <option value="Citrix">Citrix Workspace</option>
+                        </select>
+                      ) : (
+                        <input className="w-full p-6 rounded-2xl custom-input font-mono outline-none focus:ring-4" value={formData.port || ''} onChange={e => setFormData({...formData, port: e.target.value})} />
+                      )}
+                    </div>
+                    {!formData.identityId && (
+                      <>
+                        <div className="col-span-1">
+                          <label className="text-[10px] font-black uppercase text-sub mb-2 block tracking-widest">Username</label>
+                          <input className="w-full p-6 rounded-2xl custom-input font-bold outline-none focus:ring-4" value={formData.username || ''} placeholder="Administrator" onChange={e => setFormData({...formData, username: e.target.value})} />
+                        </div>
+                        <div className="col-span-1">
+                          <label className="text-[10px] font-black uppercase text-sub mb-2 block tracking-widest">Password</label>
+                          <input type="password" name="pwd_sec" className="w-full p-6 rounded-2xl custom-input font-bold outline-none focus:ring-4" value={formData.password || ''} placeholder="••••••••" onChange={e => setFormData({...formData, password: e.target.value})} />
+                        </div>
+                      </>
+                    )}
+                    {type === 'VPN' && (
+                      <div className="col-span-2 flex items-center gap-4 p-6 card-bg rounded-3xl border-2">
+                        <input type="checkbox" id="sso-toggle" className="w-6 h-6 accent-indigo-600 rounded cursor-pointer" checked={!!formData.sso} onChange={e => setFormData({...formData, sso: e.target.checked})} />
+                        <label htmlFor="sso-toggle" className="text-sm font-black uppercase text-contrast cursor-pointer">Enable SSO / GUI Launcher</label>
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex justify-end gap-6 mt-12">
+                    <button onClick={() => setShowModal(false)} className="px-10 py-4 font-black uppercase text-xs text-contrast">Abort</button>
+                    <button onClick={handleSave} className="px-14 py-6 bg-indigo-600 text-white rounded-3xl font-black text-xs uppercase tracking-widest shadow-2xl transition-transform active:scale-95">{editingId ? 'Apply Update' : 'Save Connection'}</button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      };
+
+      const VaultManager = ({ identities = [], onUpdate }) => {
+        const [showModal, setShowModal] = useState(false);
+        const [formData, setFormData] = useState({ name: '', username: '', password: '' });
+
+        const handleSave = () => {
+          if (!formData.name || !formData.username) return;
+          onUpdate([...identities, { ...formData, id: Date.now().toString() }]);
+          setShowModal(false);
+          setFormData({ name: '', username: '', password: '' });
+        };
+
+        const remove = (id) => onUpdate(identities.filter(i => i.id !== id));
+
+        return (
+          <div className="space-y-12 animate-in fade-in duration-500">
+            <div className="flex justify-between items-end">
+              <div>
+                <h2 className="text-5xl font-black uppercase tracking-tighter text-contrast">Identity Vault</h2>
+                <p className="text-sm font-bold text-sub uppercase tracking-widest mt-2">Centralized Credential Manager</p>
+              </div>
+              <button onClick={() => setShowModal(true)} className="px-10 py-5 bg-indigo-600 text-white rounded-3xl font-black text-xs uppercase tracking-widest shadow-2xl shadow-indigo-600/30 hover:scale-105 transition-transform">+ New Identity</button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+              {identities.map(i => (
+                <div key={i.id} className="card-bg p-8 rounded-[2.5rem] relative group border-2">
+                  <div className="flex justify-between items-start mb-6">
+                    <div className="p-4 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-2xl shadow-sm"><KeyRound size={24} /></div>
+                    <button onClick={() => remove(i.id)} className="p-2 text-red-400 hover:text-red-500 transition-colors"><Trash2 size={20} /></button>
+                  </div>
+                  <h4 className="text-xl font-black uppercase tracking-tight text-contrast mb-2">{i.name}</h4>
+                  <p className="text-[11px] font-mono font-black text-sub uppercase tracking-widest bg-slate-100 dark:bg-slate-800 px-3 py-1 rounded inline-block">{i.username}</p>
+                </div>
+              ))}
+              {identities.length === 0 && <div className="col-span-full py-24 text-center card-bg rounded-[4rem] border-4 border-dashed border-slate-300 dark:border-slate-800"><p className="opacity-30 font-black uppercase tracking-[0.4em] text-lg text-contrast">Vault is Empty</p></div>}
+            </div>
+
+            {showModal && (
+              <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4 backdrop-blur-md">
+                <div className="card-bg p-12 rounded-[3rem] w-full max-w-md shadow-2xl border-4">
+                  <h3 className="text-3xl font-black uppercase tracking-tighter text-contrast mb-10">Create Identity</h3>
+                  <div className="space-y-6">
+                    <div>
+                      <label className="text-[10px] font-black uppercase text-sub mb-2 block tracking-widest">Profile Name</label>
+                      <input className="w-full p-6 rounded-2xl custom-input outline-none focus:ring-4" value={formData.name} placeholder="e.g. Domain Admin" onChange={e => setFormData({...formData, name: e.target.value})} />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black uppercase text-sub mb-2 block tracking-widest">Username</label>
+                      <input className="w-full p-6 rounded-2xl custom-input font-bold outline-none focus:ring-4" value={formData.username} placeholder="admin_user" onChange={e => setFormData({...formData, username: e.target.value})} />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black uppercase text-sub mb-2 block tracking-widest">Password</label>
+                      <input type="password" className="w-full p-6 rounded-2xl custom-input font-bold outline-none focus:ring-4" value={formData.password} placeholder="••••••••" onChange={e => setFormData({...formData, password: e.target.value})} />
+                    </div>
+                  </div>
+                  <div className="flex justify-end gap-6 mt-12">
+                    <button onClick={() => setShowModal(false)} className="px-10 py-4 font-black uppercase text-xs text-contrast">Abort</button>
+                    <button onClick={handleSave} className="px-14 py-6 bg-indigo-600 text-white rounded-3xl font-black text-xs uppercase tracking-widest shadow-2xl">Save to Vault</button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      };
+
+      const SettingsView = ({ config, onUpdate, isPython }) => {
+        const [activeSub, setActiveSub] = useState('performance');
+
+        const handleExport = async () => {
+          if (window.pywebview?.api) {
+            const dataStr = JSON.stringify(config, null, 2);
+            const success = await window.pywebview.api.export_config_dialog(dataStr);
+            if (success) alert("Configuration exported successfully.");
+          }
+        };
+
+        const handleImport = async () => {
+          if (window.pywebview?.api) {
+            const raw = await window.pywebview.api.import_config_dialog();
+            if (raw) {
+              try {
+                const p = JSON.parse(raw);
+                if (p && p.connections) onUpdate(p);
+              } catch (e) { alert("Invalid backup file format."); }
+            }
+          }
+        };
+
+        const handleReset = async () => {
+          if (confirm("WARNING: This will delete ALL stored profiles and credentials permanently. Proceed?")) {
+            if (window.pywebview?.api) {
+              await window.pywebview.api.wipe_config();
+              localStorage.removeItem('netconnect_pro_master_config');
+              window.location.reload();
+            }
+          }
+        };
+
+        return (
+          <div className="max-w-4xl mx-auto space-y-16 animate-in fade-in duration-500">
+            <div className="flex items-center gap-8">
+              <div className="p-5 bg-indigo-600 rounded-[2rem] text-white shadow-2xl"><SettingsIcon size={48} /></div>
+              <div>
+                <h1 className="text-5xl font-black text-contrast uppercase tracking-tighter">System Engine</h1>
+                <p className="text-sub font-bold uppercase text-xs tracking-widest mt-2">Global Console Control</p>
+              </div>
+            </div>
+            <div className="flex gap-4 p-2 card-bg rounded-full border-2 w-fit">
+              <button onClick={() => setActiveSub('performance')} className={`px-10 py-4 rounded-full text-[11px] font-black uppercase tracking-widest transition-all ${activeSub === 'performance' ? 'bg-indigo-600 text-white shadow-xl' : 'text-contrast opacity-50 font-bold'}`}>Performance</button>
+              <button onClick={() => setActiveSub('security')} className={`px-10 py-4 rounded-full text-[11px] font-black uppercase tracking-widest transition-all ${activeSub === 'security' ? 'bg-indigo-600 text-white shadow-xl' : 'text-contrast opacity-50 font-bold'}`}>Data Portability</button>
+            </div>
+            <div className="card-bg p-12 rounded-[3.5rem] border-2 space-y-12 shadow-sm">
+              {activeSub === 'performance' && (
+                <>
+                  <SettingToggle label="Native Workspace Sync" sub="Persistence at ~/.netconnect_pro.json" active={!!config.pythonSync} onToggle={() => onUpdate({ pythonSync: !config.pythonSync })} disabled={!isPython} />
+                  <SettingToggle label="Embedded Developer Console" sub="Expose inspection tool (Requires App Restart)" active={!!config.showDevTools} onToggle={() => onUpdate({ showDevTools: !config.showDevTools })} />
+                  <div className="p-6 bg-indigo-50 dark:bg-slate-800/40 rounded-3xl border border-indigo-100 dark:border-indigo-900/50">
+                    <p className="text-xs font-black uppercase tracking-widest text-indigo-700 dark:text-indigo-400 mb-2">Workspace File</p>
+                    <code className="text-[10px] font-mono font-bold break-all opacity-80 whitespace-pre-wrap">C:\Users\%USERNAME%\.netconnect_pro.json</code>
+                  </div>
+                </>
+              )}
+              {activeSub === 'security' && (
+                <div className="space-y-10">
+                  <div>
+                    <h4 className="text-2xl font-black uppercase tracking-tight text-contrast mb-2">Native Data Handling</h4>
+                    <p className="text-sm text-sub font-bold uppercase tracking-widest mb-6">Backup and Restore your profile vault using local storage.</p>
+                    <div className="flex flex-wrap gap-4">
+                      <button onClick={handleExport} className="px-8 py-4 bg-indigo-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-3 shadow-lg hover:scale-105 transition-transform"><Download size={18} /> Export Profile JSON</button>
+                      <button onClick={handleImport} className="px-8 py-4 bg-slate-100 dark:bg-slate-800 text-contrast border-2 border-slate-200 dark:border-slate-700 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-3 hover:bg-slate-200 transition-colors"><Upload size={18} /> Import Profile JSON</button>
+                    </div>
+                  </div>
+                  <div className="pt-8 border-t-2 border-slate-200 dark:border-slate-800">
+                    <button onClick={handleReset} className="px-10 py-5 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-500 rounded-2xl font-black text-xs uppercase tracking-widest border-2 border-red-200 dark:border-red-900 shadow-sm transition-transform active:scale-95"><Trash2 size={20} className="inline mr-3"/> Factory Reset Vault</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      };
+
+      const SettingToggle = ({ label, sub, active, onToggle, disabled }) => (
+        <div className={`flex justify-between items-center ${disabled ? 'opacity-30 pointer-events-none' : ''}`}>
+          <div>
+            <p className="text-2xl font-black uppercase tracking-tight text-contrast">{label}</p>
+            <p className="text-xs text-sub font-bold uppercase tracking-widest mt-1">{sub}</p>
+          </div>
+          <button onClick={onToggle} className={`w-20 h-10 rounded-full relative transition-all ${active ? 'bg-indigo-600' : 'bg-slate-300 dark:bg-slate-800'}`}>
+            <div className={`absolute top-1.5 w-7 h-7 bg-white rounded-full shadow-lg transition-all ${active ? 'right-1.5' : 'left-1.5'}`}></div>
+          </button>
+        </div>
+      );
+
+      const SidebarItem = ({ icon, label, active, onClick, collapsed }) => (
+        <button onClick={onClick} className={`w-full flex items-center ${collapsed ? 'justify-center' : 'gap-6'} p-5 rounded-[2.5rem] transition-all group ${active ? 'bg-indigo-600 text-white shadow-2xl shadow-indigo-600/40' : 'hover:bg-slate-100 dark:hover:bg-slate-900 text-slate-500 dark:text-slate-400'}`}>
+          <div className={`${active ? 'text-white' : 'text-indigo-600 dark:text-indigo-400 group-hover:scale-125'} transition-transform shrink-0`}>
+            {React.cloneElement(icon, { size: 30 })}
+          </div>
+          {!collapsed && <span className="text-[11px] font-black uppercase tracking-[0.2em] whitespace-nowrap overflow-hidden">{label}</span>}
+          {active && !collapsed && <ChevronRight className="ml-auto text-white/50 shrink-0" size={18} />}
+        </button>
+      );
+
+      const App = () => {
+        const [isPython, setIsPython] = useState(false);
+        const [activeView, setActiveView] = useState('home');
+        const [collapsed, setCollapsed] = useState(false);
+        const [loaded, setLoaded] = useState(false);
+        // Corrected boolean to lowercase 'false'
+        const [config, setConfig] = useState({ theme: 'dark', connections: [], identities: [], pythonSync: true, showDevTools: false });
+
+        useEffect(() => {
+          const init = async () => {
+            let initialData = null;
+            const local = localStorage.getItem('netconnect_pro_master_config');
+            if (local) {
+              try { initialData = JSON.parse(local); } catch (e) {}
+            }
+
+            if (window.pywebview?.api) {
+              setIsPython(true);
+              try {
+                const res = await window.pywebview.api.load_config();
+                if (res) {
+                  const p = JSON.parse(res);
+                  if (p && p.connections) initialData = p;
+                }
+              } catch (e) { console.error("[Engine] Initial Load Failed:", e); }
+            }
+
+            if (initialData) {
+              setConfig({
+                theme: initialData.theme || 'dark',
+                connections: initialData.connections || [],
+                identities: initialData.identities || [],
+                pythonSync: initialData.pythonSync !== undefined ? initialData.pythonSync : true,
+                showDevTools: !!initialData.showDevTools
+              });
+            }
+            setLoaded(true);
+          };
+          
+          const timer = setTimeout(init, 500);
+          return () => clearTimeout(timer);
+        }, []);
+
+        useEffect(() => {
+          if (!loaded) return; 
+
+          localStorage.setItem('netconnect_pro_master_config', JSON.stringify(config));
+          document.documentElement.className = config.theme;
+          
+          if (isPython && config.pythonSync && window.pywebview?.api) {
+            window.pywebview.api.save_config(JSON.stringify(config));
+          }
+        }, [config, isPython, loaded]);
+
+        const update = (up) => setConfig(prev => ({ ...prev, ...up }));
+
+        if (!loaded) {
+          return <div className="loading-screen"><div className="spinner"></div><p className="mt-4 font-black uppercase text-[10px] tracking-[4px]">Initializing Vault...</p></div>;
+        }
+
+        return (
+          <div className="h-screen flex flex-col transition-colors duration-200">
+            <header className="h-16 flex items-center justify-between px-10 bg-white dark:bg-slate-950 border-b-2 border-slate-200 dark:border-slate-800 shrink-0 shadow-sm z-30">
+              <div className="flex items-center gap-5">
+                <div className="bg-indigo-600 p-2 rounded-xl text-white shadow-lg"><Cpu size={24} /></div>
+                <span className="text-[13px] font-black uppercase tracking-[0.5em] text-contrast">NetConnect Pro Console</span>
+              </div>
+              <div className="flex items-center gap-8">
+                <button onClick={() => update({theme: config.theme === 'dark' ? 'light' : 'dark'})} className="p-3 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-all">
+                  {config.theme === 'dark' ? <Sun size={24} className="text-amber-400" /> : <Moon size={24} className="text-indigo-600" />}
+                </button>
+              </div>
+            </header>
+
+            <div className="flex-1 flex overflow-hidden">
+              <aside className={`${collapsed ? 'w-28' : 'w-28 lg:w-96'} sidebar-bg flex flex-col p-8 gap-10 transition-all duration-300 shrink-0`}>
+                <div className="flex justify-center">
+                   <button onClick={() => setCollapsed(!collapsed)} className="p-5 bg-slate-100 dark:bg-slate-800 rounded-[2rem] hover:scale-110 transition-transform shadow-md border-2 border-slate-200 dark:border-slate-700">
+                     {collapsed ? <ChevronRight size={24} /> : <ChevronLeft size={24} />}
+                   </button>
+                </div>
+                <nav className="space-y-6">
+                  <SidebarItem icon={<LayoutDashboard />} label="Dashboard" active={activeView === 'home'} onClick={() => setActiveView('home')} collapsed={collapsed} />
+                  <SidebarItem icon={<Monitor />} label="Remote RDP" active={activeView === 'rdp'} onClick={() => setActiveView('rdp')} collapsed={collapsed} />
+                  <SidebarItem icon={<Shield />} label="VPN Clients" active={activeView === 'vpn'} onClick={() => setActiveView('vpn')} collapsed={collapsed} />
+                  <SidebarItem icon={<KeyRound />} label="Identity Vault" active={activeView === 'vault'} onClick={() => setActiveView('vault')} collapsed={collapsed} />
+                </nav>
+                <div className="mt-auto pt-10 border-t-2 border-slate-200 dark:border-slate-800">
+                  <SidebarItem icon={<SettingsIcon />} label="Settings" active={activeView === 'settings'} onClick={() => setActiveView('settings')} collapsed={collapsed} />
+                </div>
+              </aside>
+
+              <main className="flex-1 overflow-y-auto p-16 lg:p-24 scroll-smooth bg-slate-50 dark:bg-[#020617]">
+                {activeView === 'home' && (
+                  <div className="space-y-16 animate-in fade-in duration-500">
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
+                      <div className="p-10 rounded-[3rem] border-2 card-bg shadow-md">
+                        <Activity className="text-indigo-600 mb-4" size={32} />
+                        <p className="text-[11px] font-black uppercase tracking-widest text-sub">Profiles</p>
+                        <p className="text-5xl font-black tracking-tighter">{config.connections.length}</p>
+                      </div>
+                      <div className="p-10 rounded-[3rem] border-2 card-bg shadow-md">
+                        <KeyRound className="text-indigo-600 mb-4" size={32} />
+                        <p className="text-[11px] font-black uppercase tracking-widest text-sub">Identities</p>
+                        <p className="text-5xl font-black tracking-tighter">{config.identities?.length || 0}</p>
+                      </div>
+                      <div className="p-10 rounded-[3rem] border-2 card-bg shadow-md">
+                        <Monitor className="text-indigo-600 mb-4" size={32} />
+                        <p className="text-[11px] font-black uppercase tracking-widest text-sub">RDP Hosts</p>
+                        <p className="text-5xl font-black tracking-tighter">{config.connections.filter(c => c.type === 'RDP').length}</p>
+                      </div>
+                      <div className="p-10 rounded-[3rem] border-2 bg-indigo-600 text-white shadow-2xl">
+                        <ShieldCheck className="text-white/80 mb-4" size={32} />
+                        <p className="text-[11px] font-black uppercase tracking-widest text-white/70">Console Health</p>
+                        <p className="text-5xl font-black tracking-tighter">100%</p>
+                      </div>
+                    </div>
+                    <h3 className="text-3xl font-black uppercase tracking-tighter text-contrast">Quick Start</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-10">
+                      {config.connections.length === 0 ? <div className="col-span-full py-24 text-center card-bg rounded-[4rem] border-4 border-dashed border-slate-300 dark:border-slate-800"><p className="opacity-30 font-black uppercase tracking-[0.4em] text-lg text-contrast">Vault is Clean</p></div> : 
+                       config.connections.slice(0, 6).map(c => <ConnectionCard key={c.id} connection={c} identities={config.identities} onUpdate={(id, up) => update({ connections: config.connections.map(x => x.id === id ? {...x, ...up} : x)})} onDelete={() => {}} onEdit={() => {}} />)}
+                    </div>
+                  </div>
+                )}
+                {activeView === 'rdp' && <ConnectionList type="RDP" connections={config.connections.filter(c => c.type === 'RDP')} identities={config.identities} onAdd={c => update({ connections: [...config.connections, c]})} onDelete={id => update({ connections: config.connections.filter(c => c.id !== id)})} onUpdate={(id, up) => update({ connections: config.connections.map(c => c.id === id ? {...c, ...up} : c)})} />}
+                {activeView === 'vpn' && <ConnectionList type="VPN" connections={config.connections.filter(c => c.type === 'VPN')} identities={config.identities} onAdd={c => update({ connections: [...config.connections, c]})} onDelete={id => update({ connections: config.connections.filter(c => c.id !== id)})} onUpdate={(id, up) => update({ connections: config.connections.map(c => c.id === id ? {...c, ...up} : c)})} />}
+                {activeView === 'vault' && <VaultManager identities={config.identities} onUpdate={ids => update({ identities: ids })} />}
+                {activeView === 'settings' && <SettingsView config={config} onUpdate={update} isPython={isPython} />}
+              </main>
+            </div>
+          </div>
+        );
+      };
+
+      const root = createRoot(document.getElementById('root'));
+      root.render(<App />);
+    </script>
+  <script type="module" src="/index.tsx"></script>
+</body>
+</html>

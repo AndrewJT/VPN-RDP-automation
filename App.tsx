@@ -1,0 +1,1 @@
+// Consolidated into index.html for reliable browser execution.

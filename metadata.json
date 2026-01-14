@@ -1,0 +1,8 @@
+
+{
+  "name": "NetConnect Pro Console",
+  "description": "High-performance Python-powered RDP and VPN management console with ultra-contrast UI and native Windows integration.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}

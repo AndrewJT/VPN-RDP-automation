@@ -1,0 +1,1 @@
+// Logic moved to index.html for reliable browser-side transpilation.
